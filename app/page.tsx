@@ -1,65 +1,181 @@
-import Image from "next/image";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import {
+  ArrowRight,
+  CalendarDays,
+  Flame,
+  Sparkles,
+  Target,
+  TrendingUp,
+} from "lucide-react";
+import { auth } from "@/lib/auth";
+import { Button } from "@/components/ui/button";
+import { FadeUp } from "@/components/motion-fade-up";
 
-export default function Home() {
+export default async function Home() {
+  const session = await auth();
+  if (session?.user) redirect("/today");
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <div className="relative min-h-screen overflow-hidden bg-background">
+      <div className="absolute inset-0 bg-grid-faint opacity-50" aria-hidden />
+      <div
+        className="pointer-events-none absolute -top-32 left-1/2 h-115 w-190 -translate-x-1/2 rounded-full opacity-40 blur-3xl"
+        style={{
+          background:
+            "radial-gradient(closest-side, rgba(52, 211, 153, 0.45), transparent)",
+        }}
+        aria-hidden
+      />
+
+      <FadeUp distance={0} duration={0.4}>
+        <header className="relative mx-auto flex max-w-6xl items-center justify-between px-4 py-6 sm:px-6">
+          <Link href="/" className="flex items-center gap-2">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-primary/15 text-primary">
+              <Sparkles className="h-4 w-4" />
+            </span>
+            <span className="text-base font-semibold tracking-tight">
+              GrowthPath
+            </span>
+          </Link>
+          <div className="flex items-center gap-3 text-sm">
+            <Link
+              href="/sign-in"
+              className="text-muted-foreground transition-colors hover:text-foreground"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+              Sign in
+            </Link>
+            <Link href="/sign-up">
+              <Button size="sm">Get started</Button>
+            </Link>
+          </div>
+        </header>
+      </FadeUp>
+
+      <main className="relative mx-auto max-w-6xl px-4 pb-24 pt-12 sm:px-6 sm:pt-20">
+        {/* Hero */}
+        <section className="mx-auto max-w-3xl text-center">
+          <FadeUp delay={0.05}>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-primary">
+              <Flame className="h-3 w-3" /> Personal growth, calmly executed
+            </span>
+          </FadeUp>
+          <FadeUp delay={0.12} distance={14}>
+            <h1 className="mt-6 text-4xl font-semibold tracking-tight sm:text-6xl">
+              Long plans become
+              <br />
+              <span className="text-primary">small daily wins.</span>
+            </h1>
+          </FadeUp>
+          <FadeUp delay={0.22}>
+            <p className="mx-auto mt-5 max-w-xl text-base text-muted-foreground sm:text-lg">
+              GrowthPath serves you today&apos;s tasks from a 6-month plan,
+              fetches real beginner-friendly resources for each one, and quietly
+              tracks your streak so you actually finish.
+            </p>
+          </FadeUp>
+          <FadeUp delay={0.32}>
+            <div className="mt-8 flex items-center justify-center gap-3">
+              <Link href="/sign-up">
+                <Button size="lg" className="gap-2">
+                  Start your plan <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+              <Link href="/sign-in">
+                <Button size="lg" variant="outline">
+                  I have an account
+                </Button>
+              </Link>
+            </div>
+          </FadeUp>
+        </section>
+
+        {/* Feature grid */}
+        <section className="mt-20 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            {
+              icon: <CalendarDays className="h-5 w-5" />,
+              title: "One day at a time",
+              description:
+                "Today only. No 24-week wall of tasks staring back at you.",
+            },
+            {
+              icon: <Target className="h-5 w-5" />,
+              title: "Grounded resources",
+              description:
+                "Real, current URLs filtered by AI — never hallucinated.",
+            },
+            {
+              icon: <Flame className="h-5 w-5 text-streak" />,
+              title: "Forgiving streaks",
+              description:
+                "Sundays free. One weekly pardon. Built to keep, not punish.",
+            },
+            {
+              icon: <TrendingUp className="h-5 w-5" />,
+              title: "Weekly AI recap",
+              description:
+                "Every Sunday, see the week through your wins and growth.",
+            },
+          ].map((f, i) => (
+            <FadeUp key={f.title} delay={0.42 + i * 0.06}>
+              <FeatureCard
+                icon={f.icon}
+                title={f.title}
+                description={f.description}
+              />
+            </FadeUp>
+          ))}
+        </section>
+
+        {/* CTA strip */}
+        <FadeUp delay={0.7}>
+          <section className="mt-20 overflow-hidden rounded-2xl border border-border bg-card">
+            <div className="grid items-center gap-6 p-8 sm:grid-cols-[1.4fr_1fr] sm:p-10">
+              <div>
+                <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                  Ready to actually finish the plan this time?
+                </h2>
+                <p className="mt-2 max-w-md text-sm text-muted-foreground">
+                  Free during private beta. No credit card. You can delete your
+                  account in one click.
+                </p>
+              </div>
+              <div className="flex justify-start sm:justify-end">
+                <Link href="/sign-up">
+                  <Button size="lg" className="gap-2">
+                    Create account <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </section>
+        </FadeUp>
+
+        <footer className="mt-14 text-center text-xs text-muted-foreground">
+          Built with care · Quiet by design
+        </footer>
       </main>
+    </div>
+  );
+}
+
+function FeatureCard({
+  icon,
+  title,
+  description,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="group rounded-2xl border border-border bg-card p-5 transition-colors hover:border-primary/40">
+      <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        {icon}
+      </div>
+      <h3 className="text-sm font-semibold">{title}</h3>
+      <p className="mt-1 text-sm text-muted-foreground">{description}</p>
     </div>
   );
 }

@@ -22,7 +22,13 @@
 
 # misc
 .DS_Store
+Thumbs.db
 *.pem
+
+# editor
+.idea/
+.vscode/
+*.swp
 
 # debug
 npm-debug.log*
@@ -30,12 +36,18 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files — never commit local secrets
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+# …but DO commit the empty template so contributors know what to set
+!.env.local.example
 
 # vercel
 .vercel
 
-# typescript
+# typescript / next
 *.tsbuildinfo
 next-env.d.ts
