@@ -10,6 +10,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { settings } from "@/lib/db/schema";
+import { log } from "@/lib/log";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -274,36 +275,128 @@ export async function generatePlanOutline(
   const model = await getActiveModel();
   const months = Math.max(1, Math.ceil(input.durationWeeks / 4));
 
-  const systemPrompt = `You design multi-month personal growth plans.
+  const first = await callOutlineLLM({
+    apiKey,
+    model,
+    input,
+    months,
+    strict: false,
+  });
+  let weeks = first.weeks;
+  let title = first.title;
+  let modelUsed = first.modelUsed;
+
+  // Retry once with a hardened prompt if the LLM came back short. Small
+  // / free models occasionally stop early; a stricter pass usually
+  // unblocks them without a quality hit.
+  if (weeks.length !== input.durationWeeks) {
+    log.warn("plan.outline.count_mismatch", {
+      got: weeks.length,
+      expected: input.durationWeeks,
+      retrying: true,
+    });
+    const retry = await callOutlineLLM({
+      apiKey,
+      model,
+      input,
+      months,
+      strict: true,
+    });
+    if (retry.weeks.length > weeks.length) {
+      weeks = retry.weeks;
+      title = retry.title || title;
+      modelUsed = retry.modelUsed;
+    }
+  }
+
+  // Final reconciliation. Truncate excess; pad shortfall with
+  // consolidation weeks so the user is never blocked by a flaky model.
+  if (weeks.length > input.durationWeeks) {
+    weeks = weeks.slice(0, input.durationWeeks);
+  } else if (weeks.length < input.durationWeeks) {
+    const padded = padWeeks(weeks, input.durationWeeks, months, input.topic);
+    log.warn("plan.outline.padded", {
+      got: weeks.length,
+      padded_to: padded.length,
+      topic: input.topic,
+    });
+    weeks = padded;
+  }
+
+  return {
+    title:
+      title && title.trim().length > 0
+        ? title.trim()
+        : `${input.topic} — ${input.durationWeeks} weeks`,
+    weeks,
+    modelUsed,
+  };
+}
+
+interface OutlineCallParams {
+  apiKey: string;
+  model: string;
+  input: OutlineInput;
+  months: number;
+  strict: boolean;
+}
+
+interface OutlineCallResult {
+  weeks: OutlineWeek[];
+  title: string;
+  modelUsed: string;
+}
+
+async function callOutlineLLM(
+  params: OutlineCallParams,
+): Promise<OutlineCallResult> {
+  const { apiKey, model, input, months, strict } = params;
+
+  // Explicit week-by-week scaffolding anchors the model in the exact
+  // count we want. Smaller models honour structured examples far more
+  // reliably than free-text rules.
+  const exampleWeeks = Array.from({ length: input.durationWeeks }, (_, i) => {
+    const wn = i + 1;
+    const mn = Math.min(months, Math.ceil(wn / 4));
+    return `    { "weekNumber": ${wn}, "monthNumber": ${mn}, "theme": "...", "goal": "..." }`;
+  }).join(",\n");
+
+  const strictPreamble = strict
+    ? `CRITICAL: Your previous attempt returned the wrong number of weeks. You MUST output every single week from 1 through ${input.durationWeeks}. Do not stop early. Do not skip. Count them as you write.\n\n`
+    : "";
+
+  const systemPrompt = `${strictPreamble}You design multi-month personal growth plans.
 
 You will produce a plan outline as JSON. Each week has ONE theme and ONE concrete weekly goal — the daily tasks are generated separately later, so do NOT list tasks here.
 
 Hard rules:
-- Plan must span exactly ${input.durationWeeks} weeks (${months} months, ~4 weeks per month).
-- weekNumber is 1..${input.durationWeeks}; monthNumber is 1..${months} (weekNumber 1-4 = month 1, 5-8 = month 2, ...).
+- Output EXACTLY ${input.durationWeeks} week objects in the "weeks" array — no more, no less.
+- weekNumber values must be 1, 2, 3, …, ${input.durationWeeks} with no gaps.
+- monthNumber is 1..${months} (weekNumber 1-4 = month 1, 5-8 = month 2, …).
 - Theme = a short noun phrase (e.g. "JavaScript fundamentals", "Long-run base building", "Conversational vocabulary").
 - Goal = one specific sentence about what the learner will be able to do/produce by the end of that week.
 - Build progressively. Week N should depend on weeks 1..N-1.
-- Every 4th week (4, 8, 12, ...) should be a CHECKPOINT/CONSOLIDATION week — apply what they've learned, not new material.
+- Every 4th week (4, 8, 12, …) should be a CHECKPOINT/CONSOLIDATION week — apply what they've learned, not new material.
 - Tailor difficulty to the user's stated current level and hours/day.
 - Tailor format to the user's preferred learning style (videos / reading / projects / mixed).
 
-Output STRICT JSON only, matching:
+Output STRICT JSON only with EXACTLY ${input.durationWeeks} entries in "weeks":
 {
   "title": "<short, specific plan title — not generic>",
   "weeks": [
-    { "weekNumber": 1, "monthNumber": 1, "theme": "...", "goal": "..." },
-    ...
+${exampleWeeks}
   ]
 }`;
 
-  const userMessage = `Design a plan:
+  const userMessage = `Design a plan with EXACTLY ${input.durationWeeks} weeks:
 - Topic: ${input.topic}
 - End goal: ${input.goal}
 - Current level: ${input.currentLevel}
 - Available time: ${input.hoursPerDay} hour(s)/day
 - Preferred learning style: ${input.learningStyle}
-- Duration: ${input.durationWeeks} weeks`;
+- Duration: ${input.durationWeeks} weeks (${months} months)
+
+Return JSON with ${input.durationWeeks} week objects, weekNumber 1 through ${input.durationWeeks}.`;
 
   const res = await fetch(OPENROUTER_API_URL, {
     method: "POST",
@@ -320,8 +413,9 @@ Output STRICT JSON only, matching:
         { role: "user", content: userMessage },
       ],
       response_format: { type: "json_object" },
-      max_tokens: 4096,
-      temperature: 0.6,
+      // Headroom for long plans: ~250 tokens/week + structural overhead.
+      max_tokens: Math.max(2048, input.durationWeeks * 300 + 512),
+      temperature: strict ? 0.3 : 0.6,
     }),
   });
 
@@ -369,20 +463,48 @@ Output STRICT JSON only, matching:
         .sort((a, b) => a.weekNumber - b.weekNumber)
     : [];
 
-  if (weeks.length !== input.durationWeeks) {
-    throw new Error(
-      `LLM returned ${weeks.length} weeks; expected exactly ${input.durationWeeks}`,
-    );
-  }
-
   return {
-    title:
-      typeof parsed.title === "string" && parsed.title.trim().length > 0
-        ? parsed.title.trim()
-        : `${input.topic} — ${input.durationWeeks} weeks`,
     weeks,
+    title: typeof parsed.title === "string" ? parsed.title : "",
     modelUsed: data.model ?? model,
   };
+}
+
+/**
+ * Fills any missing week numbers with auto-generated consolidation entries.
+ * Preserves the LLM's output for the weeks it did produce; only the gaps
+ * are filled. Ensures the user is never blocked by a model that stops short.
+ */
+function padWeeks(
+  existing: OutlineWeek[],
+  total: number,
+  months: number,
+  topic: string,
+): OutlineWeek[] {
+  const byNumber = new Map<number, OutlineWeek>();
+  for (const w of existing) byNumber.set(w.weekNumber, w);
+
+  const filled: OutlineWeek[] = [];
+  for (let i = 1; i <= total; i++) {
+    const existing = byNumber.get(i);
+    if (existing) {
+      filled.push(existing);
+      continue;
+    }
+    const mn = Math.min(months, Math.ceil(i / 4));
+    const isCheckpoint = i % 4 === 0;
+    filled.push({
+      weekNumber: i,
+      monthNumber: mn,
+      theme: isCheckpoint
+        ? `${topic} — consolidation`
+        : `${topic} — week ${i}`,
+      goal: isCheckpoint
+        ? "Review and apply what you've learned in the previous three weeks."
+        : "Continue progressing on the plan goals. Revisit any open items from earlier weeks.",
+    });
+  }
+  return filled;
 }
 
 // ---------------------------------------------------------------------------

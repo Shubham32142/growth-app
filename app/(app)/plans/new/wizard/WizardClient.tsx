@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -70,6 +70,37 @@ export default function WizardClient({ durationWeeks }: Props) {
   const [style, setStyle] = useState<LearningStyle>("mixed");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  // Rehydrate from sessionStorage so users coming back via "Back to start"
+  // after a failed generation don't have to retype everything.
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem("growthpath:wizard");
+      if (!raw) return;
+      const prev = JSON.parse(raw) as Partial<{
+        topic: string;
+        goal: string;
+        currentLevel: string;
+        hoursPerDay: number;
+        learningStyle: LearningStyle;
+      }>;
+      if (typeof prev.topic === "string") setTopic(prev.topic);
+      if (typeof prev.goal === "string") setGoal(prev.goal);
+      if (typeof prev.currentLevel === "string") setLevel(prev.currentLevel);
+      if (typeof prev.hoursPerDay === "number")
+        setHoursPerDay(String(prev.hoursPerDay));
+      if (
+        prev.learningStyle === "videos" ||
+        prev.learningStyle === "reading" ||
+        prev.learningStyle === "projects" ||
+        prev.learningStyle === "mixed"
+      ) {
+        setStyle(prev.learningStyle);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   function valid(): boolean {
     if (topic.trim().length < 3) return false;

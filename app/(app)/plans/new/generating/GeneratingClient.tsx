@@ -44,16 +44,30 @@ const INITIAL_STEPS: Step[] = [
 
 export default function GeneratingClient() {
   const router = useRouter();
-  const startedRef = useRef(false);
   const [steps, setSteps] = useState<Step[]>(INITIAL_STEPS);
   const [error, setError] = useState("");
   const [planTitle, setPlanTitle] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  // attempt is a re-run trigger. Bumping it in retry() reruns the
+  // useEffect with fresh state instead of hard-navigating away.
+  const [attempt, setAttempt] = useState(0);
+
+  function setStep(id: Step["id"], status: StepStatus) {
+    setSteps((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, status } : s)),
+    );
+  }
+
+  function retry() {
+    setError("");
+    setSteps(INITIAL_STEPS);
+    setDone(false);
+    setRetrying(true);
+    setAttempt((n) => n + 1);
+  }
 
   useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
-
     let inputs: WizardInputs | null = null;
     try {
       const raw = window.sessionStorage.getItem("growthpath:wizard");
@@ -67,18 +81,20 @@ export default function GeneratingClient() {
       return;
     }
 
+    let cancelled = false;
+
     run(inputs).catch(() => {
       /* errors handled inline */
     });
 
     async function run(i: WizardInputs) {
-      // ── Step 1: outline ─────────────────────────────────────────────────
       setStep("outline", "running");
       const createRes = await fetch("/api/plans/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(i),
       });
+      if (cancelled) return;
 
       if (!createRes.ok) {
         setStep("outline", "failed");
@@ -86,6 +102,7 @@ export default function GeneratingClient() {
           error?: string;
         };
         setError(payload.error ?? "Could not generate the outline.");
+        setRetrying(false);
         return;
       }
 
@@ -95,12 +112,12 @@ export default function GeneratingClient() {
       };
       setStep("outline", "done");
 
-      // ── Step 2: week 1 tasks ────────────────────────────────────────────
       setStep("week1", "running");
       const weekRes = await fetch(
         `/api/plans/${created.planId}/generate-week?week=1`,
         { method: "POST" },
       );
+      if (cancelled) return;
 
       if (!weekRes.ok) {
         setStep("week1", "failed");
@@ -111,20 +128,20 @@ export default function GeneratingClient() {
           payload.error ??
             "Outline ready, but generating week 1 tasks failed. You can retry from Today.",
         );
+        setRetrying(false);
         return;
       }
 
       setStep("week1", "done");
       setDone(true);
+      setRetrying(false);
 
-      // Clear the wizard inputs and hand off to /today.
       try {
         window.sessionStorage.removeItem("growthpath:wizard");
       } catch {
         /* ignore */
       }
 
-      // Fetch the plan title for the success card. Best-effort.
       try {
         const planRes = await fetch("/api/plans/active");
         if (planRes.ok) {
@@ -137,19 +154,17 @@ export default function GeneratingClient() {
         /* ignore */
       }
 
-      // Small linger so the user sees the success state before redirecting.
       setTimeout(() => {
+        if (cancelled) return;
         router.push("/today");
         router.refresh();
       }, 1200);
     }
 
-    function setStep(id: Step["id"], status: StepStatus) {
-      setSteps((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, status } : s)),
-      );
-    }
-  }, [router]);
+    return () => {
+      cancelled = true;
+    };
+  }, [router, attempt]);
 
   return (
     <div className="mx-auto flex max-w-xl flex-col items-center text-center">
@@ -226,14 +241,15 @@ export default function GeneratingClient() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => router.push("/plans/new/wizard")}
+                    onClick={retry}
+                    disabled={retrying}
                   >
-                    Try again
+                    {retrying ? "Retrying…" : "Try again"}
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => router.push("/plans/new")}
+                    onClick={() => router.push("/plans/new/wizard")}
                   >
                     Back to start
                   </Button>
