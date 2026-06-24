@@ -34,7 +34,7 @@ export default async function WinsPage() {
                 <Trophy className="h-3 w-3" /> Weekly wins
               </Badge>
             </div>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl text-gradient-accent">
               Weekly Wins
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">

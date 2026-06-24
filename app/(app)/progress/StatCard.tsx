@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useCountUp } from "@/components/ui/count-up";
+import { Tilt } from "@/components/tilt";
 import { cn } from "@/lib/cn";
 
 export type StatAccent = "primary" | "streak" | "sky" | "violet";
@@ -57,17 +58,45 @@ export function StatCard({
   const animated = useCountUp(Number.isNaN(num) ? 0 : num);
   const display = Number.isNaN(num) ? value : `${Math.round(animated)}${suffix}`;
   const styles = ACCENT[accent];
+  const isFlame = icon === "flame";
 
   return (
+    <Tilt>
     <Card interactive className="overflow-hidden">
       <CardContent className="flex items-center gap-3 py-4">
         <span
           className={cn(
-            "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 ring-inset",
+            "relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 ring-inset",
             styles.chip,
           )}
         >
-          <Icon className="h-5 w-5" />
+          {/* Streak card burns continuously; the rest gently bob. */}
+          {isFlame && (
+            <>
+              <span
+                aria-hidden
+                className="absolute inset-1 rounded-full bg-streak/40 blur-md animate-flicker"
+              />
+              <span
+                aria-hidden
+                className="absolute inset-0 rounded-xl ring-1 ring-streak/50 animate-pulse-ring"
+              />
+            </>
+          )}
+          <Icon
+            className={cn(
+              "relative h-5 w-5",
+              isFlame ? "animate-flicker" : "animate-float",
+            )}
+            style={
+              isFlame
+                ? {
+                    filter:
+                      "drop-shadow(0 0 5px color-mix(in oklab, var(--streak) 65%, transparent))",
+                  }
+                : undefined
+            }
+          />
         </span>
         <div className="min-w-0">
           <p className="truncate text-xs text-muted-foreground">{label}</p>
@@ -77,5 +106,6 @@ export function StatCard({
         </div>
       </CardContent>
     </Card>
+    </Tilt>
   );
 }

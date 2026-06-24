@@ -48,11 +48,47 @@ export function AppShell({ user, children }: AppShellProps) {
     // No opaque background here on purpose — <body> paints --background, which
     // lets the fixed -z-10 ambient layer below show through.
     <div className="min-h-screen text-foreground">
-      {/* Ambient backdrop — soft accent glows + faint grid behind everything */}
-      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10">
-        <div className="absolute -top-40 left-1/2 h-[440px] w-[680px] -translate-x-1/2 rounded-full bg-primary/[0.07] blur-[130px]" />
-        <div className="absolute bottom-0 right-0 h-[360px] w-[460px] translate-x-1/4 translate-y-1/4 rounded-full bg-accent-2/[0.06] blur-[130px]" />
+      {/* Ambient backdrop — slowly drifting accent glows, floating motes and a
+          faint grid. Always animating, so the surface never feels static.
+          Placement is on the wrapper; the animation owns the inner transform. */}
+      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        {/* Slowly rotating aurora wash beneath everything */}
+        <div className="absolute inset-[-25%] aurora opacity-50 blur-[70px]" />
+        <div className="absolute left-1/2 top-[-160px] -translate-x-1/2">
+          <div className="h-[440px] w-[680px] rounded-full bg-primary/[0.08] blur-[130px] animate-drift" />
+        </div>
+        <div className="absolute bottom-[-90px] right-[-70px]">
+          <div className="h-[380px] w-[480px] rounded-full bg-accent-2/[0.07] blur-[130px] animate-drift-2" />
+        </div>
+        <div className="absolute left-[-90px] top-1/3">
+          <div
+            className="h-[320px] w-[420px] rounded-full bg-accent-3/[0.05] blur-[130px] animate-drift"
+            style={{ animationDelay: "-9s" }}
+          />
+        </div>
         <div className="absolute inset-0 bg-grid-faint opacity-[0.35]" />
+
+        {/* Floating motes */}
+        {[
+          { left: "14%", top: "22%", c: "var(--accent)", d: "0s" },
+          { left: "82%", top: "30%", c: "var(--accent-2)", d: "1.4s" },
+          { left: "68%", top: "70%", c: "var(--accent-3)", d: "0.6s" },
+          { left: "28%", top: "78%", c: "var(--streak)", d: "2s" },
+          { left: "48%", top: "16%", c: "var(--accent-2)", d: "1s" },
+          { left: "90%", top: "60%", c: "var(--accent)", d: "0.3s" },
+        ].map((m, i) => (
+          <span
+            key={i}
+            className="absolute h-1.5 w-1.5 rounded-full animate-float"
+            style={{
+              left: m.left,
+              top: m.top,
+              background: m.c,
+              opacity: 0.35,
+              animationDelay: m.d,
+            }}
+          />
+        ))}
       </div>
 
       {/* Desktop sidebar */}
@@ -64,7 +100,7 @@ export function AppShell({ user, children }: AppShellProps) {
       <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-surface/95 px-4 py-3 backdrop-blur lg:hidden">
         <Link href="/today" className="flex items-center gap-2">
           <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-primary/15 text-primary">
-            <Sparkles className="h-4 w-4" />
+            <Sparkles className="h-4 w-4 animate-spin-slow" />
           </span>
           <span className="text-sm font-semibold tracking-tight">GrowthPath</span>
         </Link>
@@ -149,7 +185,7 @@ function SidebarContent({
     <div className="flex h-full flex-col">
       <div className="hidden items-center gap-2 px-5 pb-4 pt-5 lg:flex">
         <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-primary/15 text-primary">
-          <Sparkles className="h-4 w-4" />
+          <Sparkles className="h-4 w-4 animate-spin-slow" />
         </span>
         <div className="flex flex-col leading-tight">
           <span className="text-sm font-semibold tracking-tight">GrowthPath</span>
@@ -189,7 +225,7 @@ function SidebarContent({
                 className={cn(
                   "h-4 w-4 shrink-0",
                   active
-                    ? "text-primary"
+                    ? "text-primary animate-float"
                     : "text-muted-foreground group-hover:text-foreground",
                 )}
               />

@@ -63,7 +63,15 @@ export default function EnergyChart({ data }: Props) {
               return [`${numeric.toFixed(1)} / 5`, "Average energy"];
             }}
           />
-          <Bar dataKey="avg" radius={[6, 6, 0, 0]} fill="var(--accent)" />
+          <Bar
+            dataKey="avg"
+            radius={[6, 6, 0, 0]}
+            fill="var(--accent)"
+            isAnimationActive
+            animationBegin={150}
+            animationDuration={900}
+            animationEasing="ease-out"
+          />
         </BarChart>
       </ResponsiveContainer>
     </div>

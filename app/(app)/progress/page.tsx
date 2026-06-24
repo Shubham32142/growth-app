@@ -122,7 +122,7 @@ export default async function ProgressPage() {
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Badge variant="accent">Week {week} of {plan.durationWeeks}</Badge>
           </div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl text-gradient-accent">
             Progress
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">

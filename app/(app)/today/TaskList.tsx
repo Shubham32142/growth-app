@@ -350,7 +350,7 @@ export default function TaskList({
       )}
 
       {/* Streak + progress card */}
-      <Card interactive>
+      <Card interactive className="animate-glow-breathe">
         <CardContent className="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
             <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-streak/15 text-streak ring-1 ring-inset ring-streak/20">

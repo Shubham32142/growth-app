@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Confetti } from "@/components/confetti";
 
 interface WinItem {
   weekNumber: number;
@@ -35,6 +36,7 @@ export default function WinsForm({ currentWeek, initialWins }: Props) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const [celebrate, setCelebrate] = useState(0);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -72,11 +74,13 @@ export default function WinsForm({ currentWeek, initialWins }: Props) {
       );
     });
     setSaved(true);
+    setCelebrate((c) => c + 1);
     setTimeout(() => setSaved(false), 2500);
   }
 
   return (
     <div className="space-y-6">
+      <Confetti trigger={celebrate} count={50} origin="top" />
       <Card>
         <CardHeader>
           <CardTitle>Week {currentWeek} — your 3 wins</CardTitle>

@@ -27,13 +27,17 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
       >
         <motion.div
           className={cn(
-            "h-full rounded-full bg-primary",
+            "relative h-full overflow-hidden rounded-full bg-primary",
             indicatorClassName,
           )}
           initial={{ width: 0 }}
           animate={{ width: `${safe}%` }}
           transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-        />
+        >
+          {safe > 0 && (
+            <span aria-hidden className="absolute inset-0 bar-sheen" />
+          )}
+        </motion.div>
       </div>
     );
   },

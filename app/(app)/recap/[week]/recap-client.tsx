@@ -22,6 +22,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Confetti } from "@/components/confetti";
 
 interface RecapData {
   weekNumber: number;
@@ -42,6 +43,8 @@ export default function RecapClient({ weekNumber, initial }: Props) {
   const [recap, setRecap] = useState<RecapData | null>(initial);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
+  // Fires on mount if a recap already exists, and again after generation.
+  const [celebrate, setCelebrate] = useState(initial ? 1 : 0);
   const [shareUrl, setShareUrl] = useState<string | null>(
     initial?.shareToken ? `/share/${initial.shareToken}` : null,
   );
@@ -62,6 +65,7 @@ export default function RecapClient({ weekNumber, initial }: Props) {
 
     const payload = (await res.json()) as { recap: RecapData };
     setRecap(payload.recap);
+    setCelebrate((c) => c + 1);
     if (payload.recap.shareToken) {
       setShareUrl(`/share/${payload.recap.shareToken}`);
     }
@@ -93,12 +97,13 @@ export default function RecapClient({ weekNumber, initial }: Props) {
 
   return (
     <div className="space-y-6">
+      <Confetti trigger={celebrate} count={60} origin="top" />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <Badge variant="streak">
             <Sparkles className="h-3 w-3" /> Weekly recap
           </Badge>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl text-gradient-accent">
             Week {weekNumber} recap
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">

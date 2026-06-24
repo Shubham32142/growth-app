@@ -121,6 +121,7 @@ export default function Heatmap({ cells, year }: Props) {
                 <div
                   key={row}
                   title={day ? `${day}: ${cellMap.get(day) ?? 0} tasks` : ""}
+                  className={day ? "wave-in" : undefined}
                   style={{
                     width: 12,
                     height: 12,
@@ -128,6 +129,10 @@ export default function Heatmap({ cells, year }: Props) {
                     background: day
                       ? intensity(cellMap.get(day) ?? 0)
                       : "transparent",
+                    // Diagonal reveal: cells light up in a left-to-right wave.
+                    animationDelay: day
+                      ? `${Math.min(col * 6 + row * 14, 1200)}ms`
+                      : undefined,
                   }}
                 />
               ))}

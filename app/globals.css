@@ -215,3 +215,104 @@
     }
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Ambient (always-on) motion — slow, low-amplitude loops that keep the whole
+   surface quietly breathing even when the user isn't interacting.
+   --------------------------------------------------------------------------- */
+@keyframes drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(36px, 28px) scale(1.08); }
+  66% { transform: translate(-28px, 18px) scale(0.95); }
+}
+@keyframes drift-2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-46px, -30px) scale(1.12); }
+}
+@keyframes breathe {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.95; }
+}
+@keyframes bar-sheen {
+  0% { transform: translateX(-130%); }
+  60%, 100% { transform: translateX(240%); }
+}
+
+@layer utilities {
+  /* Each blob drifts AND breathes; combined so one class does both. */
+  .animate-drift {
+    animation: drift 22s ease-in-out infinite, breathe 8s ease-in-out infinite;
+  }
+  .animate-drift-2 {
+    animation: drift-2 28s ease-in-out infinite, breathe 10s ease-in-out infinite;
+  }
+  /* Moving highlight that sweeps across a filled progress bar forever. */
+  .bar-sheen {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklab, white 26%, transparent),
+      transparent
+    );
+    transform: translateX(-130%);
+    animation: bar-sheen 2.8s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-drift,
+    .animate-drift-2,
+    .bar-sheen {
+      animation: none;
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Extra ambient flourishes — aurora wash, breathing card glow, slow twinkle
+   and a one-shot wave reveal for grids.
+   --------------------------------------------------------------------------- */
+@keyframes aurora-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+@keyframes glow-breathe {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--accent) 16%, transparent),
+      0 10px 38px -18px color-mix(in oklab, var(--accent) 22%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--accent) 38%, transparent),
+      0 20px 60px -16px color-mix(in oklab, var(--accent) 45%, transparent);
+  }
+}
+@keyframes wave-in {
+  from { opacity: 0; transform: scale(0.4); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@layer utilities {
+  /* Slowly rotating multi-accent gradient wash for the app background. */
+  .aurora {
+    background-image:
+      radial-gradient(28% 28% at 28% 30%, color-mix(in oklab, var(--accent) 22%, transparent), transparent 70%),
+      radial-gradient(30% 30% at 72% 36%, color-mix(in oklab, var(--accent-2) 22%, transparent), transparent 70%),
+      radial-gradient(34% 34% at 50% 76%, color-mix(in oklab, var(--accent-3) 18%, transparent), transparent 70%);
+    animation: aurora-spin 60s linear infinite;
+  }
+  .animate-spin-slow { animation: spin-slow 9s linear infinite; }
+  .animate-glow-breathe { animation: glow-breathe 5s ease-in-out infinite; }
+  .wave-in { animation: wave-in 0.5s ease-out both; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .aurora,
+    .animate-spin-slow,
+    .animate-glow-breathe,
+    .wave-in {
+      animation: none;
+    }
+  }
+}

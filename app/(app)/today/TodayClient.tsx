@@ -149,7 +149,7 @@ export default function TodayClient({ initial }: Props) {
             {data.isPast && <Badge variant="default">Back-fill</Badge>}
             <span>{LONG_DATE_FMT.format(selectedDate)}</span>
           </div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl text-gradient-accent">
             {data.isToday
               ? "Today"
               : data.isFuture
