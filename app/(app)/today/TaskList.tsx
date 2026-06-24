@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useOptimistic, useTransition } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -8,7 +8,6 @@ import {
   BookOpen,
   Check,
   ExternalLink,
-  Flame,
   Play,
   Trophy,
   Zap,
@@ -19,6 +18,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { AliveFlame } from "@/components/alive-flame";
+import { Confetti } from "@/components/confetti";
 import { cn } from "@/lib/cn";
 
 interface CuratedResource {
@@ -130,22 +131,15 @@ export default function TaskList({
   const [completions, setCompletions] = useState<Set<string>>(
     () => new Set(tasks.filter((t) => t.completed).map((t) => t._id)),
   );
-  const [optimisticCompletions, addOptimistic] = useOptimistic(
-    completions,
-    (state, { id, done }: { id: string; done: boolean }) => {
-      const next = new Set(state);
-      if (done) next.add(id);
-      else next.delete(id);
-      return next;
-    },
-  );
-  const [, startTransition] = useTransition();
   const [energyTaskId, setEnergyTaskId] = useState<string | null>(null);
   const [energySaving, setEnergySaving] = useState(false);
   const [energyError, setEnergyError] = useState("");
+  // Bumped each time the day's last task is checked off → fires confetti.
+  const [celebrate, setCelebrate] = useState(0);
 
-  const done = optimisticCompletions.size;
+  const done = completions.size;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const allDone = total > 0 && done === total && !isReadOnly;
 
   const allCurated = tasks.flatMap((task) => task.curated);
   const isVideo = (r: { url: string; type: string }) => {
@@ -216,37 +210,59 @@ export default function TaskList({
 
   async function toggle(id: string) {
     if (isReadOnly) return;
-    const nowDone = !optimisticCompletions.has(id);
-    startTransition(() => {
-      addOptimistic({ id, done: nowDone });
+    const wasDone = completions.has(id);
+    const nowDone = !wasDone;
+
+    // Flip the checkbox INSTANTLY — plain state, renders this frame. We only
+    // touch the server in the background and revert if it fails. (The previous
+    // useOptimistic wiring dropped the optimistic value before the request
+    // returned, so the tick appeared to lag by the full round-trip.)
+    setCompletions((prev) => {
+      const next = new Set(prev);
+      if (nowDone) next.add(id);
+      else next.delete(id);
+      return next;
     });
+
+    if (nowDone) {
+      setEnergyTaskId(id);
+      setEnergyError("");
+      // `completions` here is the pre-toggle set, so +1 = this click finished
+      // the day's final task → celebrate.
+      if (total > 0 && completions.size + 1 === total) {
+        setCelebrate((c) => c + 1);
+      }
+    } else if (energyTaskId === id) {
+      setEnergyTaskId(null);
+    }
 
     const method = nowDone ? "POST" : "DELETE";
-    const res = await fetch(`/api/tasks/${id}/complete`, {
-      method,
-      ...(method === "POST" && completionDateISO
-        ? {
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ at: completionDateISO }),
-          }
-        : {}),
-    });
+    let ok = false;
+    try {
+      const res = await fetch(`/api/tasks/${id}/complete`, {
+        method,
+        ...(method === "POST" && completionDateISO
+          ? {
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ at: completionDateISO }),
+            }
+          : {}),
+      });
+      ok = res.ok;
+    } catch {
+      ok = false;
+    }
 
-    if (res.ok) {
+    if (!ok) {
+      // Revert the optimistic flip on failure.
       setCompletions((prev) => {
         const next = new Set(prev);
-        if (nowDone) next.add(id);
-        else next.delete(id);
+        if (nowDone) next.delete(id);
+        else next.add(id);
         return next;
       });
-      if (nowDone) {
-        setEnergyTaskId(id);
-        setEnergyError("");
-      } else if (energyTaskId === id) {
-        setEnergyTaskId(null);
-      }
-    } else {
-      setCompletions((prev) => new Set(prev));
+      if (nowDone && energyTaskId === id) setEnergyTaskId(null);
+      setEnergyError("Couldn't save that — check your connection and retry.");
     }
   }
 
@@ -273,6 +289,36 @@ export default function TaskList({
 
   return (
     <div className="space-y-6">
+      <Confetti trigger={celebrate} count={70} origin="top" />
+
+      <AnimatePresence>
+        {allDone && (
+          <motion.div
+            key="day-complete"
+            initial={{ opacity: 0, scale: 0.92, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: -8 }}
+            transition={{ type: "spring", stiffness: 260, damping: 20 }}
+          >
+            <Card className="border-primary/50 bg-primary/5 glow-accent">
+              <CardContent className="flex items-center gap-4 py-5">
+                <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/15 text-2xl animate-float">
+                  🎉
+                </span>
+                <div>
+                  <p className="text-lg font-bold text-gradient-accent">
+                    Day complete!
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    All {total} tasks done — another day of compounding growth.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {showWinsPrompt && !isReadOnly && (
         <Card className="border-streak/50 bg-streak/5">
           <CardContent className="flex items-center justify-between gap-3 py-4">
@@ -304,15 +350,15 @@ export default function TaskList({
       )}
 
       {/* Streak + progress card */}
-      <Card>
+      <Card interactive>
         <CardContent className="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
-            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-streak/15 text-streak">
-              <Flame className="h-5 w-5" />
+            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-streak/15 text-streak ring-1 ring-inset ring-streak/20">
+              <AliveFlame />
             </span>
             <div>
               <p className="text-lg font-semibold leading-none">
-                {streak}{" "}
+                <span className="tabular-nums">{streak}</span>{" "}
                 <span className="text-sm font-medium text-muted-foreground">
                   day{streak !== 1 ? "s" : ""} streak
                 </span>
@@ -358,12 +404,12 @@ export default function TaskList({
                         key={task._id}
                         index={idx}
                         task={task}
-                        completed={optimisticCompletions.has(task._id)}
+                        completed={completions.has(task._id)}
                         readOnly={isReadOnly}
                         onToggle={() => toggle(task._id)}
                         showEnergy={
                           energyTaskId === task._id &&
-                          optimisticCompletions.has(task._id) &&
+                          completions.has(task._id) &&
                           !isReadOnly
                         }
                         energySaving={energySaving}
@@ -436,10 +482,10 @@ function TaskItem({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.22, ease: "easeOut", delay: index * 0.04 }}
       className={cn(
-        "group rounded-xl border bg-card p-4 transition-colors",
+        "group rounded-xl border bg-card p-4 transition-all duration-200",
         completed
           ? "border-primary/40 bg-primary/5"
-          : "border-border hover:border-primary/30",
+          : "border-border hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md hover:shadow-black/20",
       )}
     >
       <div className="flex items-start gap-3">

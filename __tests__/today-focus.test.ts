@@ -11,34 +11,28 @@ function task(order: number, title?: string) {
   };
 }
 
-function day(isoDate: string): Date {
-  return new Date(`${isoDate}T12:00:00Z`);
-}
-
 describe("pickTodaysTasks", () => {
-  it("returns contiguous balanced slice for Monday", () => {
+  // dayInWeek is 0-based from the plan start: 0..5 working days, 6 = rest.
+  it("returns contiguous balanced slice for the first working day (dayInWeek 0)", () => {
     const tasks = Array.from({ length: 8 }, (_, i) => task(i + 1));
 
-    const monday = day("2026-05-04");
-    const result = pickTodaysTasks(tasks, monday);
+    const result = pickTodaysTasks(tasks, 0);
 
     expect(result.map((t) => t.order)).toEqual([1, 2]);
   });
 
-  it("returns stable ordering for later weekdays", () => {
+  it("returns stable ordering for a later working day (dayInWeek 3)", () => {
     const tasks = Array.from({ length: 8 }, (_, i) => task(i + 1));
 
-    const thursday = day("2026-05-07");
-    const result = pickTodaysTasks(tasks, thursday);
+    const result = pickTodaysTasks(tasks, 3);
 
     expect(result.map((t) => t.order)).toEqual([6]);
   });
 
-  it("returns empty list on Sunday rest day", () => {
+  it("returns empty list on the rest day (dayInWeek 6)", () => {
     const tasks = Array.from({ length: 10 }, (_, i) => task(i + 1));
 
-    const sunday = day("2026-05-10");
-    expect(pickTodaysTasks(tasks, sunday)).toEqual([]);
+    expect(pickTodaysTasks(tasks, 6)).toEqual([]);
   });
 });
 

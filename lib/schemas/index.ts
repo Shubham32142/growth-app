@@ -52,4 +52,4 @@ export async function parseBody<T extends z.ZodTypeAny>(
 export * from "./plan";
 export * from "./task";
 export * from "./wins";
-export * from "./admin";
+export * from "./ai";

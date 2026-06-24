@@ -6,6 +6,7 @@ import { completions, recaps, tasks, wins } from "@/lib/db/schema";
 import { getActivePlan } from "@/lib/plan";
 import { computeStreak } from "@/lib/streak";
 import { generateRecap } from "@/lib/ai";
+import { getUserProviderConfig, NO_AI_CONFIG_ERROR } from "@/lib/ai-config";
 import { LIMITS, checkRateLimit, rateLimitResponse } from "@/lib/ratelimit";
 
 export async function POST(
@@ -37,6 +38,11 @@ export async function POST(
     ...LIMITS.recap,
   });
   if (!rl.ok) return rateLimitResponse(rl);
+
+  const aiConfig = await getUserProviderConfig(userId);
+  if (!aiConfig) {
+    return NextResponse.json({ error: NO_AI_CONFIG_ERROR }, { status: 400 });
+  }
 
   const [weekCompletions, weekTaskCountRow, win, allCompletions] =
     await Promise.all([
@@ -96,7 +102,7 @@ export async function POST(
 
   const winsEntries = win ? (win.entries as string[]) : [];
 
-  const recapData = await generateRecap({
+  const recapData = await generateRecap(aiConfig, {
     weekNumber,
     completedTasks,
     totalTasksInWeek,

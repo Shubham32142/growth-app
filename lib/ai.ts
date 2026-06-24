@@ -1,38 +1,21 @@
 /**
- * OpenRouter AI client.
- * Three roles:
+ * AI generation (provider-agnostic, BYOK).
+ *
+ * Every function takes a `ProviderConfig` (the calling user's chosen provider +
+ * their own API key + model) and routes through `chatJSON` in lib/ai-providers.
+ * Four roles:
  *   1. Rank real search results (never invents URLs)
  *   2. Generate plan outlines (week × theme × goal) from wizard inputs
  *   3. Generate a week's tasks calibrated to last week's actual progress
  *   4. Write a weekly recap from completion data
  */
 
-import { eq } from "drizzle-orm";
-import { db } from "@/lib/db/client";
-import { settings } from "@/lib/db/schema";
 import { log } from "@/lib/log";
-
-const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-
-// Resolution order:
-//  1. DB setting (set via /admin) — takes highest priority
-//  2. OPENROUTER_MODEL env var — set in .env.local for a per-deploy default
-//  3. Hardcoded fallback (free Llama model)
-const HARDCODED_DEFAULT = "meta-llama/llama-3.2-3b-instruct:free";
-
-export async function getActiveModel(): Promise<string> {
-  try {
-    const [row] = await db
-      .select({ value: settings.value })
-      .from(settings)
-      .where(eq(settings.key, "openrouter.model"))
-      .limit(1);
-    if (row?.value) return row.value;
-  } catch {
-    // DB unavailable — fall through to env / hardcoded
-  }
-  return process.env.OPENROUTER_MODEL?.trim() || HARDCODED_DEFAULT;
-}
+import {
+  chatJSON,
+  parseJsonLoose,
+  type ProviderConfig,
+} from "@/lib/ai-providers";
 
 export interface RankedResult {
   title: string;
@@ -52,15 +35,11 @@ interface SearchCandidate {
  * beginner-friendliness. Returns up to `topN` items, only from the input list.
  */
 export async function rankResources(
+  cfg: ProviderConfig,
   taskTitle: string,
   candidates: SearchCandidate[],
   topN = 5,
 ): Promise<RankedResult[]> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set");
-
-  const model = await getActiveModel();
-
   const candidateList = candidates
     .map((c, i) => `[${i}] ${c.title}\nURL: ${c.url}\nSnippet: ${c.snippet}`)
     .join("\n\n");
@@ -72,42 +51,17 @@ IMPORTANT: Only use URLs exactly as provided — do NOT invent, modify or halluc
 Respond with valid JSON only, matching this schema exactly:
 { "picks": [{ "index": number, "reason": string }] }`;
 
-  const res = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": "https://growthpath.app",
-      "X-Title": "GrowthPath",
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: candidateList },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 512,
-      temperature: 0.1,
-    }),
+  const { text } = await chatJSON(cfg, {
+    system: systemPrompt,
+    user: candidateList,
+    maxTokens: 512,
+    temperature: 0.1,
   });
 
-  if (!res.ok) {
-    throw new Error(`OpenRouter error ${res.status}: ${await res.text()}`);
-  }
-
-  const data = (await res.json()) as {
-    choices: { message: { content: string } }[];
-    model: string;
-  };
-
-  const content = data.choices?.[0]?.message?.content ?? "{}";
-  let parsed: { picks?: { index: number; reason: string }[] };
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    return [];
-  }
+  const parsed = parseJsonLoose<{
+    picks?: { index: number; reason: string }[];
+  }>(text);
+  if (!parsed) return [];
 
   return (parsed.picks ?? [])
     .filter((p) => p.index >= 0 && p.index < candidates.length)
@@ -138,12 +92,10 @@ export interface RecapOutput {
   modelUsed: string;
 }
 
-export async function generateRecap(input: RecapInput): Promise<RecapOutput> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set");
-
-  const model = await getActiveModel();
-
+export async function generateRecap(
+  cfg: ProviderConfig,
+  input: RecapInput,
+): Promise<RecapOutput> {
   const completedTitles = input.completedTasks
     .map((t) => `- ${t.title} (${t.category})`)
     .join("\n");
@@ -180,42 +132,14 @@ ${completedTitles || "None completed this week."}
 Wins logged by the user:
 ${winsText}`;
 
-  const res = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": "https://growthpath.app",
-      "X-Title": "GrowthPath",
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 768,
-      temperature: 0.7,
-    }),
+  const { text, modelUsed } = await chatJSON(cfg, {
+    system: systemPrompt,
+    user: userMessage,
+    maxTokens: 768,
+    temperature: 0.7,
   });
 
-  if (!res.ok) {
-    throw new Error(`OpenRouter error ${res.status}: ${await res.text()}`);
-  }
-
-  const data = (await res.json()) as {
-    choices: { message: { content: string } }[];
-    model: string;
-  };
-
-  const content = data.choices?.[0]?.message?.content ?? "{}";
-  let parsed: Partial<RecapOutput>;
-  try {
-    parsed = JSON.parse(content) as Partial<RecapOutput>;
-  } catch {
-    parsed = {};
-  }
+  const parsed = parseJsonLoose<Partial<RecapOutput>>(text) ?? {};
 
   return {
     content:
@@ -225,7 +149,7 @@ ${winsText}`;
     achievements: Array.isArray(parsed.achievements) ? parsed.achievements : [],
     growthAreas: Array.isArray(parsed.growthAreas) ? parsed.growthAreas : [],
     improvements: Array.isArray(parsed.improvements) ? parsed.improvements : [],
-    modelUsed: data.model ?? model,
+    modelUsed,
   };
 }
 
@@ -259,29 +183,14 @@ export interface OutlineOutput {
  * Generates the high-level outline of a plan — title + (weeks × theme × goal).
  * Tasks are NOT generated here; they're produced per-week by
  * `generateWeekTasks` lazily as the user progresses.
- *
- * Prompt strategy: the LLM gets a short, opinionated brief about what makes
- * a good multi-month plan (vary themes, build progressively, leave room for
- * checkpoints) plus a strict JSON schema. We don't pass the markdown plan
- * as an example because that would bias every plan toward dev topics; we
- * encode the structure in the schema + system prompt instead.
  */
 export async function generatePlanOutline(
+  cfg: ProviderConfig,
   input: OutlineInput,
 ): Promise<OutlineOutput> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set");
-
-  const model = await getActiveModel();
   const months = Math.max(1, Math.ceil(input.durationWeeks / 4));
 
-  const first = await callOutlineLLM({
-    apiKey,
-    model,
-    input,
-    months,
-    strict: false,
-  });
+  const first = await callOutlineLLM({ cfg, input, months, strict: false });
   let weeks = first.weeks;
   let title = first.title;
   let modelUsed = first.modelUsed;
@@ -295,13 +204,7 @@ export async function generatePlanOutline(
       expected: input.durationWeeks,
       retrying: true,
     });
-    const retry = await callOutlineLLM({
-      apiKey,
-      model,
-      input,
-      months,
-      strict: true,
-    });
+    const retry = await callOutlineLLM({ cfg, input, months, strict: true });
     if (retry.weeks.length > weeks.length) {
       weeks = retry.weeks;
       title = retry.title || title;
@@ -334,8 +237,7 @@ export async function generatePlanOutline(
 }
 
 interface OutlineCallParams {
-  apiKey: string;
-  model: string;
+  cfg: ProviderConfig;
   input: OutlineInput;
   months: number;
   strict: boolean;
@@ -350,7 +252,7 @@ interface OutlineCallResult {
 async function callOutlineLLM(
   params: OutlineCallParams,
 ): Promise<OutlineCallResult> {
-  const { apiKey, model, input, months, strict } = params;
+  const { cfg, input, months, strict } = params;
 
   // Explicit week-by-week scaffolding anchors the model in the exact
   // count we want. Smaller models honour structured examples far more
@@ -398,43 +300,18 @@ ${exampleWeeks}
 
 Return JSON with ${input.durationWeeks} week objects, weekNumber 1 through ${input.durationWeeks}.`;
 
-  const res = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": "https://growthpath.app",
-      "X-Title": "GrowthPath",
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage },
-      ],
-      response_format: { type: "json_object" },
-      // Headroom for long plans: ~250 tokens/week + structural overhead.
-      max_tokens: Math.max(2048, input.durationWeeks * 300 + 512),
-      temperature: strict ? 0.3 : 0.6,
-    }),
+  const { text, modelUsed } = await chatJSON(cfg, {
+    system: systemPrompt,
+    user: userMessage,
+    // Headroom for long plans: ~250 tokens/week + structural overhead.
+    maxTokens: Math.max(2048, input.durationWeeks * 300 + 512),
+    temperature: strict ? 0.3 : 0.6,
   });
 
-  if (!res.ok) {
-    throw new Error(`OpenRouter error ${res.status}: ${await res.text()}`);
-  }
-
-  const data = (await res.json()) as {
-    choices: { message: { content: string } }[];
-    model: string;
-  };
-  const raw = data.choices?.[0]?.message?.content ?? "{}";
-
-  let parsed: Partial<{ title: string; weeks: unknown }>;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new Error("LLM returned non-JSON output for plan outline");
-  }
+  // Tolerant parse: on failure we return zero weeks so generatePlanOutline's
+  // retry + padding logic recovers instead of hard-failing the whole plan.
+  const parsed =
+    parseJsonLoose<Partial<{ title: string; weeks: unknown }>>(text) ?? {};
 
   const weeks: OutlineWeek[] = Array.isArray(parsed.weeks)
     ? parsed.weeks
@@ -466,7 +343,7 @@ Return JSON with ${input.durationWeeks} week objects, weekNumber 1 through ${inp
   return {
     weeks,
     title: typeof parsed.title === "string" ? parsed.title : "",
-    modelUsed: data.model ?? model,
+    modelUsed,
   };
 }
 
@@ -486,9 +363,9 @@ function padWeeks(
 
   const filled: OutlineWeek[] = [];
   for (let i = 1; i <= total; i++) {
-    const existing = byNumber.get(i);
-    if (existing) {
-      filled.push(existing);
+    const existingWeek = byNumber.get(i);
+    if (existingWeek) {
+      filled.push(existingWeek);
       continue;
     }
     const mn = Math.min(months, Math.ceil(i / 4));
@@ -545,18 +422,24 @@ export interface WeekTasksOutput {
  * topics) so the LLM can calibrate difficulty.
  */
 export async function generateWeekTasks(
+  cfg: ProviderConfig,
   input: WeekTaskInput,
 ): Promise<WeekTasksOutput> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set");
-
-  const model = await getActiveModel();
-
   // Daily task budget: ~1 task per (hours/day × 60 / 30min avg). Cap at 7.
   const tasksPerDay = Math.max(1, Math.min(4, Math.round(input.hoursPerDay * 1.5)));
   const tasksThisWeek = tasksPerDay * 6; // 6 active days (Sunday is rest)
 
-  const systemPrompt = `You write specific, beginner-friendly daily tasks for one week of a multi-month plan.
+  const allowedCategories = new Set([
+    "technical",
+    "personal-growth",
+    "checkpoint",
+  ]);
+
+  function buildSystemPrompt(strict: boolean): string {
+    const strictPreamble = strict
+      ? `CRITICAL: Respond with ONE valid JSON object and NOTHING else — no markdown, no code fences, no commentary, no <think> blocks. A previous attempt could not be parsed.\n\n`
+      : "";
+    return `${strictPreamble}You write specific, beginner-friendly daily tasks for one week of a multi-month plan.
 
 This week's context:
 - Plan topic: ${input.topic}
@@ -583,78 +466,95 @@ Output STRICT JSON only:
     ...
   ]
 }`;
+  }
 
   const userMessage = `Generate the ${tasksThisWeek} tasks for week ${input.weekNumber}.`;
 
-  const res = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": "https://growthpath.app",
-      "X-Title": "GrowthPath",
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 3072,
-      temperature: 0.6,
-    }),
-  });
+  async function attempt(
+    useModel: string,
+    strict: boolean,
+    temperature: number,
+  ): Promise<{ tasks: GeneratedTask[]; modelUsed: string }> {
+    const { text, modelUsed } = await chatJSON(
+      { ...cfg, model: useModel },
+      {
+        system: buildSystemPrompt(strict),
+        user: userMessage,
+        // Headroom so a full week (up to 24 tasks) isn't truncated mid-JSON.
+        maxTokens: 4096,
+        temperature,
+      },
+    );
 
-  if (!res.ok) {
-    throw new Error(`OpenRouter error ${res.status}: ${await res.text()}`);
+    const parsed = parseJsonLoose<{ tasks?: unknown }>(text);
+    const tasks: GeneratedTask[] = Array.isArray(parsed?.tasks)
+      ? (parsed.tasks as unknown[])
+          .filter((t): t is Record<string, unknown> => typeof t === "object" && t !== null)
+          .map((t) => ({
+            title: String(t.title ?? "").trim(),
+            body: String(t.body ?? "").trim(),
+            section: String(t.section ?? input.weekTheme).trim(),
+            category: (allowedCategories.has(String(t.category))
+              ? String(t.category)
+              : "technical") as GeneratedTask["category"],
+            estimatedMinutes:
+              typeof t.estimatedMinutes === "number" &&
+              Number.isFinite(t.estimatedMinutes)
+                ? Math.max(5, Math.min(240, Math.round(t.estimatedMinutes)))
+                : 30,
+          }))
+          .filter((t) => t.title.length > 0)
+      : [];
+
+    return { tasks, modelUsed };
   }
 
-  const data = (await res.json()) as {
-    choices: { message: { content: string } }[];
-    model: string;
-  };
-  const raw = data.choices?.[0]?.message?.content ?? "{}";
-
-  let parsed: { tasks?: unknown };
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new Error("LLM returned non-JSON output for week tasks");
+  // Resilience: try the configured model (loose → strict). For OpenRouter
+  // (free models that intermittently emit prose/truncated JSON), also fall
+  // back to two known-reliable free models. Paid providers (OpenAI/Anthropic/
+  // Google) are reliable for JSON, so loose+strict on the chosen model is
+  // enough — we don't switch to another provider (we only hold one key).
+  const attempts: Array<{ model: string; strict: boolean; temperature: number }> = [
+    { model: cfg.model, strict: false, temperature: 0.6 },
+    { model: cfg.model, strict: true, temperature: 0.2 },
+  ];
+  if (cfg.provider === "openrouter") {
+    for (const m of ["openai/gpt-oss-20b:free", "openai/gpt-oss-120b:free"]) {
+      if (m !== cfg.model) {
+        attempts.push({ model: m, strict: false, temperature: 0.5 });
+        attempts.push({ model: m, strict: true, temperature: 0.2 });
+      }
+    }
   }
 
-  const allowedCategories = new Set([
-    "technical",
-    "personal-growth",
-    "checkpoint",
-  ]);
-
-  const tasks: GeneratedTask[] = Array.isArray(parsed.tasks)
-    ? parsed.tasks
-        .filter((t): t is Record<string, unknown> => typeof t === "object" && t !== null)
-        .map((t) => ({
-          title: String(t.title ?? "").trim(),
-          body: String(t.body ?? "").trim(),
-          section: String(t.section ?? input.weekTheme).trim(),
-          category: (allowedCategories.has(String(t.category))
-            ? String(t.category)
-            : "technical") as GeneratedTask["category"],
-          estimatedMinutes:
-            typeof t.estimatedMinutes === "number" &&
-            Number.isFinite(t.estimatedMinutes)
-              ? Math.max(5, Math.min(240, Math.round(t.estimatedMinutes)))
-              : 30,
-        }))
-        .filter((t) => t.title.length > 0)
-    : [];
-
-  if (tasks.length === 0) {
-    throw new Error("LLM returned zero valid tasks");
+  let lastError: unknown;
+  for (let i = 0; i < attempts.length; i++) {
+    const a = attempts[i];
+    try {
+      const { tasks, modelUsed } = await attempt(a.model, a.strict, a.temperature);
+      if (tasks.length > 0) {
+        if (i > 0) {
+          log.warn("plan.week.recovered", {
+            attempt: i + 1,
+            model: a.model,
+            taskCount: tasks.length,
+          });
+        }
+        return { tasks, modelUsed, adjustmentNotes: input.adjustmentNotes ?? "" };
+      }
+      log.warn("plan.week.unparsed_or_empty", { attempt: i + 1, model: a.model });
+    } catch (err) {
+      lastError = err;
+      log.warn("plan.week.attempt_failed", {
+        attempt: i + 1,
+        model: a.model,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
-  return {
-    tasks,
-    modelUsed: data.model ?? model,
-    adjustmentNotes: input.adjustmentNotes ?? "",
-  };
+  throw (
+    lastError ??
+    new Error("LLM returned no parseable tasks for the week after retries")
+  );
 }

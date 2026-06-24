@@ -36,8 +36,43 @@ export default function SignUpPage() {
     });
     setLoading(false);
 
+    // Diagnostics: surface exactly what Supabase returned so "no email"
+    // problems are debuggable from the browser console.
+    //  - identities.length === 0  → email already registered; NO email is sent
+    //    (Supabase hides this to prevent account enumeration).
+    //  - confirmation_sent_at set → a confirmation email was dispatched to SMTP.
+    //  - session present          → confirmation is OFF (auto-confirmed).
+    const identitiesCount = data?.user?.identities?.length ?? null;
+    const confirmationSentAt = (data?.user as { confirmation_sent_at?: string } | null)
+      ?.confirmation_sent_at;
+    console.info("[signup] result", {
+      email,
+      error: signUpError?.message ?? null,
+      hasSession: !!data?.session,
+      userId: data?.user?.id ?? null,
+      identitiesCount,
+      confirmationSentAt: confirmationSentAt ?? null,
+      hint:
+        identitiesCount === 0
+          ? "Email already registered → no confirmation email sent. Try signing in or use a different email."
+          : data?.session
+            ? "Auto-confirmed (Confirm email is OFF in Supabase) → no email expected."
+            : confirmationSentAt
+              ? "Confirmation email dispatched to SMTP. If it doesn't arrive, check Supabase → Logs → Auth and Brevo → Transactional → Logs (also Spam/Promotions)."
+              : "No session and no confirmation_sent_at — check that Confirm email is ON and SMTP is configured.",
+    });
+
     if (signUpError) {
       setError(signUpError.message || "Something went wrong.");
+      return;
+    }
+
+    // Email already registered: Supabase returns a user with empty identities
+    // and sends nothing. Tell the user instead of a misleading "check email".
+    if (identitiesCount === 0) {
+      setError(
+        "That email is already registered. Try signing in, or use a different email.",
+      );
       return;
     }
 
@@ -49,7 +84,7 @@ export default function SignUpPage() {
       router.refresh();
     } else {
       setInfo(
-        "Check your email to confirm your account. After confirming, sign in.",
+        "Check your email (and spam) to confirm your account. After confirming, sign in.",
       );
     }
   }

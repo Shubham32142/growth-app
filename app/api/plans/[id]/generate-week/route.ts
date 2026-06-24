@@ -10,6 +10,7 @@ import {
   tasks,
 } from "@/lib/db/schema";
 import { generateWeekTasks } from "@/lib/ai";
+import { getUserProviderConfig, NO_AI_CONFIG_ERROR } from "@/lib/ai-config";
 import { LIMITS, checkRateLimit, rateLimitResponse } from "@/lib/ratelimit";
 import { log } from "@/lib/log";
 
@@ -36,6 +37,11 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const userId = session.user.id;
+
+  const aiConfig = await getUserProviderConfig(userId);
+  if (!aiConfig) {
+    return NextResponse.json({ error: NO_AI_CONFIG_ERROR }, { status: 400 });
+  }
 
   const { id: planId } = await params;
   if (!UUID_RE.test(planId)) {
@@ -120,7 +126,7 @@ export async function POST(
   // 3. LLM call.
   let generated;
   try {
-    generated = await generateWeekTasks({
+    generated = await generateWeekTasks(aiConfig, {
       weekTheme: planWeek.theme,
       weekGoal: planWeek.goal,
       weekNumber,

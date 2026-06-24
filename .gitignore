@@ -42,6 +42,9 @@ yarn-error.log*
 .env.*.local
 .env.production
 .env.development
+# backups/copies of env files (e.g. .env.local.bak) also hold secrets
+.env*.bak
+*.bak
 # …but DO commit the empty template so contributors know what to set
 !.env.local.example
 

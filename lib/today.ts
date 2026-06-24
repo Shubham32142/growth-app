@@ -8,7 +8,7 @@ import {
   type CuratedResource,
   type Task as DbTask,
 } from "@/lib/db/schema";
-import { getActivePlan, currentWeekFromPlan } from "@/lib/plan";
+import { getActivePlan } from "@/lib/plan";
 import { computeStreak } from "@/lib/streak";
 import { inferTaskBucket, pickTodaysTasks } from "@/lib/today-focus";
 
@@ -46,6 +46,9 @@ export interface TodayData {
    * to call /api/plans/[id]/generate-week for missing-week generation.
    */
   planId: string | null;
+  /** ISO YYYY-MM-DD of the plan's start date (null when no plan). The day strip
+   *  uses this so days before the plan started are never shown. */
+  planStartISO: string | null;
   /**
    * True when the visible week exists in the outline but its tasks haven't
    * been generated yet — typically because the cron hasn't run yet or the
@@ -101,6 +104,7 @@ function emptyData(selectedDate: Date): TodayData {
     total: 0,
     hasPlan: false,
     planId: null,
+    planStartISO: null,
     weekNeedsGeneration: false,
     weekInRange: false,
   };
@@ -113,15 +117,20 @@ export async function loadTodayData(
   const plan = await getActivePlan(userId);
   if (!plan) return emptyData(selectedDate);
 
-  // currentWeekFromPlan clamps to [1, durationWeeks] which loses
-  // out-of-range info. Compute unclamped here so we can detect
-  // future-beyond-plan / past-before-plan.
-  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
-  const rawWeek =
-    Math.floor((selectedDate.getTime() - plan.startDate.getTime()) / msPerWeek) +
-    1;
-  const week = currentWeekFromPlan(plan, selectedDate);
-  const weekInRange = rawWeek >= 1 && rawWeek <= plan.durationWeeks;
+  // Everything is anchored to the plan's START DATE, not the calendar week, so
+  // "the plan starts today": day offset 0 = creation date = week 1, day 1.
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const planStart = startOfDay(plan.startDate);
+  const selectedStart = startOfDay(selectedDate);
+  const dayOffset = Math.round(
+    (selectedStart.getTime() - planStart.getTime()) / DAY_MS,
+  );
+  const rawWeek = Math.floor(dayOffset / 7) + 1; // can be < 1 before the plan
+  const week = Math.min(Math.max(rawWeek, 1), plan.durationWeeks);
+  const weekInRange = dayOffset >= 0 && rawWeek <= plan.durationWeeks;
+  // 0..5 = working days; 6 = rest day (the 7th day from the plan start).
+  const dayInWeek = ((dayOffset % 7) + 7) % 7;
+  const isRestDay = weekInRange && dayInWeek === 6;
 
   const [weekTasks, userCompletions, planWeekRow] = await Promise.all([
     db
@@ -151,16 +160,18 @@ export async function loadTodayData(
     !planWeekRow!.tasksGeneratedAt &&
     weekTasks.length === 0;
 
-  const todayTasks = pickTodaysTasks(
-    weekTasks.map((t) => ({
-      _id: t.id,
-      title: t.title,
-      body: t.body,
-      category: t.category,
-      order: t.order,
-    })),
-    selectedDate,
-  );
+  const todayTasks = weekInRange
+    ? pickTodaysTasks(
+        weekTasks.map((t) => ({
+          _id: t.id,
+          title: t.title,
+          body: t.body,
+          category: t.category,
+          order: t.order,
+        })),
+        dayInWeek,
+      )
+    : [];
 
   const todayTaskIds = todayTasks.map((t) => t._id);
   const taskResources =
@@ -199,9 +210,8 @@ export async function loadTodayData(
     }));
 
   const today = startOfDay(new Date());
-  const selected = startOfDay(selectedDate);
-  const isFuture = selected.getTime() > today.getTime();
-  const isPast = selected.getTime() < today.getTime();
+  const isFuture = selectedStart.getTime() > today.getTime();
+  const isPast = selectedStart.getTime() < today.getTime();
 
   return {
     dateISO: dateKey(selectedDate),
@@ -211,12 +221,13 @@ export async function loadTodayData(
     isToday: !isFuture && !isPast,
     isPast,
     isFuture,
-    isRestDay: selectedDate.getDay() === 0,
+    isRestDay,
     streak: currentStreak,
     tasks: rows,
     total: rows.length,
     hasPlan: true,
     planId: plan.id,
+    planStartISO: dateKey(planStart),
     weekNeedsGeneration,
     weekInRange,
   };

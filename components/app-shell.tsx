@@ -45,7 +45,16 @@ export function AppShell({ user, children }: AppShellProps) {
   const closeMobile = React.useCallback(() => setMobileOpen(false), []);
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    // No opaque background here on purpose — <body> paints --background, which
+    // lets the fixed -z-10 ambient layer below show through.
+    <div className="min-h-screen text-foreground">
+      {/* Ambient backdrop — soft accent glows + faint grid behind everything */}
+      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10">
+        <div className="absolute -top-40 left-1/2 h-[440px] w-[680px] -translate-x-1/2 rounded-full bg-primary/[0.07] blur-[130px]" />
+        <div className="absolute bottom-0 right-0 h-[360px] w-[460px] translate-x-1/4 translate-y-1/4 rounded-full bg-accent-2/[0.06] blur-[130px]" />
+        <div className="absolute inset-0 bg-grid-faint opacity-[0.35]" />
+      </div>
+
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-border bg-surface/80 backdrop-blur lg:flex">
         <SidebarContent user={user} pathname={pathname ?? ""} />

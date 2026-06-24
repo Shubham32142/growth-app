@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, count, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db/client";
 import {
@@ -104,28 +104,9 @@ export async function POST(
     });
   }
 
-  const [{ total: totalInWeek }] = await db
-    .select({ total: count() })
-    .from(tasks)
-    .where(
-      and(eq(tasks.planId, task.planId), eq(tasks.weekNumber, task.weekNumber)),
-    );
-
-  const [{ done: doneInWeek }] = await db
-    .select({ done: count() })
-    .from(completions)
-    .where(
-      and(
-        eq(completions.userId, userId),
-        eq(completions.planId, task.planId),
-        eq(completions.weekNumber, task.weekNumber),
-      ),
-    );
-
-  return NextResponse.json({
-    ok: true,
-    progress: { done: doneInWeek, total: totalInWeek },
-  });
+  // The client tracks progress optimistically and doesn't read a server count,
+  // so we skip the two extra count round-trips here for a faster response.
+  return NextResponse.json({ ok: true });
 }
 
 export async function DELETE(

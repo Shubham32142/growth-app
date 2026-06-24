@@ -9,6 +9,7 @@ import {
   tasks,
 } from "@/lib/db/schema";
 import { generateWeekTasks } from "@/lib/ai";
+import { getUserProviderConfig } from "@/lib/ai-config";
 import { currentWeekFromPlan } from "@/lib/plan";
 
 /**
@@ -84,6 +85,18 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
+    // BYOK: each plan generates with its owner's own provider key. Skip plans
+    // whose owner hasn't configured one.
+    const aiConfig = await getUserProviderConfig(plan.userId);
+    if (!aiConfig) {
+      results.push({
+        planId: plan.id,
+        weekNumber: targetWeek,
+        status: "skipped",
+      });
+      continue;
+    }
+
     try {
       const adjustmentNotes = await buildAdjustmentNotes({
         userId: plan.userId,
@@ -91,7 +104,7 @@ export async function POST(req: NextRequest) {
         prevWeek: currentWeek,
       });
 
-      const generated = await generateWeekTasks({
+      const generated = await generateWeekTasks(aiConfig, {
         weekTheme: planWeek.theme,
         weekGoal: planWeek.goal,
         weekNumber: targetWeek,

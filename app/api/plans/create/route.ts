@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db/client";
 import { planWeeks, plans } from "@/lib/db/schema";
 import { generatePlanOutline } from "@/lib/ai";
+import { getUserProviderConfig, NO_AI_CONFIG_ERROR } from "@/lib/ai-config";
 import { getActivePlan } from "@/lib/plan";
 import { createPlanBody, parseBody } from "@/lib/schemas";
 import { LIMITS, checkRateLimit, rateLimitResponse } from "@/lib/ratelimit";
@@ -47,6 +48,12 @@ export async function POST(req: NextRequest) {
     durationWeeks,
   } = parsed.data;
 
+  // BYOK: the user must have configured their own AI provider + key.
+  const aiConfig = await getUserProviderConfig(userId);
+  if (!aiConfig) {
+    return NextResponse.json({ error: NO_AI_CONFIG_ERROR }, { status: 400 });
+  }
+
   const existing = await getActivePlan(userId);
   if (existing) {
     return NextResponse.json(
@@ -76,7 +83,7 @@ export async function POST(req: NextRequest) {
   try {
     // 2. Generate the outline (1 LLM call). Validates that the LLM returned
     //    exactly `durationWeeks` weeks.
-    const outline = await generatePlanOutline({
+    const outline = await generatePlanOutline(aiConfig, {
       topic,
       goal,
       currentLevel,

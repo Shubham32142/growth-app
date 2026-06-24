@@ -456,6 +456,26 @@ export const settings = pgTable("settings", {
     .defaultNow(),
 });
 
+/**
+ * Per-user BYOK AI provider config. One active config per user: the provider
+ * they chose, their API key (AES-256-GCM encrypted — see lib/crypto.ts), and
+ * the model id. The plaintext key is never stored or returned to the browser.
+ */
+export const userAiSettings = pgTable("user_ai_settings", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => authUsers.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(), // 'openai' | 'anthropic' | 'google' | 'openrouter'
+  apiKeyEncrypted: text("api_key_encrypted").notNull(),
+  model: text("model").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 /* ────────────────────────────────────────────────────────────────────────── */
 /* Rate limit hits — sliding-window log used by lib/ratelimit.ts              */
 /*                                                                              */

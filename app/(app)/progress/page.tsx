@@ -2,13 +2,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { and, count, eq, inArray } from "drizzle-orm";
-import {
-  Award,
-  CheckCircle2,
-  Flame,
-  Sparkles,
-  TrendingUp,
-} from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { db } from "@/lib/db/client";
 import { completions, energyLogs, tasks } from "@/lib/db/schema";
 import { currentWeekFromPlan, requireActivePlan } from "@/lib/plan";
@@ -23,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import { FadeUp } from "@/components/motion-fade-up";
 import { Progress } from "@/components/ui/progress";
+import { StatCard } from "./StatCard";
 import Heatmap from "./Heatmap";
 import EnergyChart from "./EnergyChart";
 
@@ -152,28 +147,28 @@ export default async function ProgressPage() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           {
-            icon: <Flame className="h-4 w-4 text-streak" />,
+            icon: "flame" as const,
             label: "Current streak",
             value: `${currentStreak}d`,
             accent: "streak" as const,
           },
           {
-            icon: <Award className="h-4 w-4 text-muted-foreground" />,
+            icon: "award" as const,
             label: "Longest streak",
             value: `${longestStreak}d`,
-            accent: undefined,
+            accent: "violet" as const,
           },
           {
-            icon: <CheckCircle2 className="h-4 w-4 text-primary" />,
+            icon: "check" as const,
             label: "Total complete",
             value: `${totalDone}`,
             accent: "primary" as const,
           },
           {
-            icon: <TrendingUp className="h-4 w-4 text-primary" />,
+            icon: "trending" as const,
             label: "Overall",
             value: `${overallPct}%`,
-            accent: "primary" as const,
+            accent: "sky" as const,
           },
         ].map((stat, idx) => (
           <FadeUp key={stat.label} delay={0.04 * idx}>
@@ -190,13 +185,13 @@ export default async function ProgressPage() {
       {/* Week + overall progress */}
       <div className="grid gap-4 sm:grid-cols-2">
         <FadeUp delay={0.18}>
-          <Card>
+          <Card interactive>
             <CardHeader>
               <CardTitle>This week</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="mb-3 flex items-baseline justify-between">
-                <span className="text-2xl font-semibold">{weekPct}%</span>
+                <span className="text-3xl font-bold tabular-nums">{weekPct}%</span>
                 <span className="text-xs text-muted-foreground">
                   {doneThisWeek}/{tasksThisWeek} tasks
                 </span>
@@ -206,13 +201,13 @@ export default async function ProgressPage() {
           </Card>
         </FadeUp>
         <FadeUp delay={0.22}>
-          <Card>
+          <Card interactive>
             <CardHeader>
               <CardTitle>Overall plan</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="mb-3 flex items-baseline justify-between">
-                <span className="text-2xl font-semibold">{overallPct}%</span>
+                <span className="text-3xl font-bold tabular-nums">{overallPct}%</span>
                 <span className="text-xs text-muted-foreground">
                   {totalDone}/{totalTasks} tasks
                 </span>
@@ -263,39 +258,5 @@ export default async function ProgressPage() {
         </CardContent>
       </Card>
     </div>
-  );
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-  accent,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  accent?: "primary" | "streak";
-}) {
-  return (
-    <Card>
-      <CardContent className="flex flex-col gap-1 py-4">
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>{label}</span>
-          {icon}
-        </div>
-        <p
-          className={
-            accent === "streak"
-              ? "text-2xl font-semibold text-streak"
-              : accent === "primary"
-                ? "text-2xl font-semibold text-primary"
-                : "text-2xl font-semibold"
-          }
-        >
-          {value}
-        </p>
-      </CardContent>
-    </Card>
   );
 }

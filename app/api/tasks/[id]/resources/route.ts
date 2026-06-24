@@ -4,7 +4,8 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db/client";
 import { resources, tasks, type SearchResource } from "@/lib/db/schema";
 import { searchResources } from "@/lib/search";
-import { rankResources, getActiveModel } from "@/lib/ai";
+import { rankResources } from "@/lib/ai";
+import { getUserProviderConfig } from "@/lib/ai-config";
 import { LIMITS, checkRateLimit, rateLimitResponse } from "@/lib/ratelimit";
 
 const TTL_DAYS = 30;
@@ -59,13 +60,15 @@ export async function GET(
     });
   }
 
-  // Tier 2: Tavily → OpenRouter ranking
+  // Tier 2: Tavily → LLM ranking (uses the user's BYOK provider). If the user
+  // hasn't configured a key, skip ranking gracefully — resources are an
+  // enhancement, not core to the page.
   let search: SearchResource[] = [];
   try {
-    const candidates = await searchResources(task.title);
-    if (candidates.length > 0) {
-      const ranked = await rankResources(task.title, candidates);
-      const model = await getActiveModel();
+    const aiConfig = await getUserProviderConfig(session.user.id);
+    const candidates = aiConfig ? await searchResources(task.title) : [];
+    if (aiConfig && candidates.length > 0) {
+      const ranked = await rankResources(aiConfig, task.title, candidates);
       search = ranked.map((r) => ({
         title: r.title,
         url: r.url,
@@ -73,7 +76,7 @@ export async function GET(
         summary: r.reason,
         snippet: r.snippet,
         fetchedAt: new Date().toISOString(),
-        modelUsed: model,
+        modelUsed: aiConfig.model,
         searchProvider: "tavily" as const,
       }));
 

@@ -11,6 +11,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  RestDayIllustration,
+  SproutIllustration,
+} from "@/components/illustrations";
 import { cn } from "@/lib/cn";
 import type { TodayData } from "@/lib/today";
 import TaskList from "./TaskList";
@@ -92,8 +96,10 @@ export default function TodayClient({ initial }: Props) {
     setGenerating(false);
   }
 
-  // Day strip: 7 days back, selected, 6 days forward — 14 chips, full-width,
-  // centred slightly toward today's history so back-fills are one click away.
+  // Day strip: 7 days back, selected, 6 days forward — centred slightly toward
+  // history so back-fills are one click away. Days before the plan's start date
+  // are dropped — the plan begins on its creation day, so there's nothing to
+  // show (or back-fill) earlier than that.
   const stripDays = Array.from({ length: 14 }, (_, index) => {
     const date = shiftDays(selectedDate, index - 7);
     return {
@@ -102,7 +108,7 @@ export default function TodayClient({ initial }: Props) {
       weekday: WEEKDAY_FMT.format(date),
       isToday: dateKey(date) === todayISO,
     };
-  });
+  }).filter((d) => !data.planStartISO || d.iso >= data.planStartISO);
 
   const subtitle = data.isRestDay
     ? "Sunday is your recovery day. Rest is part of the plan."
@@ -235,7 +241,7 @@ export default function TodayClient({ initial }: Props) {
               <CardContent className="flex flex-col gap-4 py-6 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-start gap-3">
                   <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary">
-                    <Sparkles className="h-5 w-5" />
+                    <Sparkles className="h-5 w-5 animate-float" />
                   </span>
                   <div>
                     <p className="text-sm font-semibold">
@@ -269,6 +275,7 @@ export default function TodayClient({ initial }: Props) {
             </Card>
           ) : data.tasks.length === 0 ? (
             <EmptyState
+              variant={data.isRestDay ? "rest" : "default"}
               title={
                 data.isRestDay
                   ? "Rest day"
@@ -299,13 +306,17 @@ export default function TodayClient({ initial }: Props) {
       </AnimatePresence>
 
       <div className="mt-10 flex items-center justify-between text-xs text-muted-foreground">
-        <button
-          type="button"
-          onClick={() => loadDate(dateKey(shiftDays(selectedDate, -1)))}
-          className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
-        >
-          <ChevronLeft className="h-3.5 w-3.5" /> Previous day
-        </button>
+        {!data.planStartISO || selectedISO > data.planStartISO ? (
+          <button
+            type="button"
+            onClick={() => loadDate(dateKey(shiftDays(selectedDate, -1)))}
+            className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" /> Previous day
+          </button>
+        ) : (
+          <span />
+        )}
         <button
           type="button"
           onClick={() => loadDate(dateKey(shiftDays(selectedDate, 1)))}
@@ -321,14 +332,26 @@ export default function TodayClient({ initial }: Props) {
 function EmptyState({
   title,
   description,
+  variant = "default",
 }: {
   title: string;
   description: string;
+  variant?: "default" | "rest";
 }) {
   return (
-    <div className="rounded-2xl border border-dashed border-border bg-card p-10 text-center">
-      <h3 className="text-base font-semibold">{title}</h3>
-      <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-    </div>
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
+      className="flex flex-col items-center rounded-2xl border border-dashed border-border bg-card p-10 text-center"
+    >
+      {variant === "rest" ? (
+        <RestDayIllustration className="h-28 w-28" />
+      ) : (
+        <SproutIllustration className="h-28 w-28" />
+      )}
+      <h3 className="mt-4 text-base font-semibold">{title}</h3>
+      <p className="mt-1 max-w-sm text-sm text-muted-foreground">{description}</p>
+    </motion.div>
   );
 }
